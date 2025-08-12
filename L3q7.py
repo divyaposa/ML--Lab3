@@ -1,3 +1,12 @@
+"""
+A7. Use the predict() function to study the prediction behavior of the classifier for test vectors.
+
+    - Train kNN classifier using the train set from A6
+    - Predict on the entire test set
+    - Compare predicted and actual labels for a few samples
+    - Manually test prediction for a specific vector
+"""
+
 import numpy as np
 from torchvision import datasets, transforms
 from sklearn.model_selection import train_test_split
@@ -6,78 +15,88 @@ from sklearn.metrics import accuracy_score, classification_report, confusion_mat
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-# --- 1. Image preprocessing: resize, convert to tensor, flatten ---
-image_transform = transforms.Compose([
-    transforms.Resize((84, 84)),                  # Resize to 84x84
-    transforms.ToTensor(),                        # Convert to PyTorch tensor
-    transforms.Lambda(lambda img: img.view(-1))   # Flatten image to 1D vector
-])
 
-# --- 2. Load dataset from folder ---
-image_dataset = datasets.ImageFolder(
-   r'C:\Users\Divya\Desktop\Dataset',
-    transform=image_transform
-)
+class KNNPredictionStudy:
+    """Class to train, evaluate, and demonstrate predictions of a kNN classifier."""
 
-# --- 3. Extract image features and labels ---
-image_features = []  # Stores flattened image vectors
-image_labels = []    # Stores corresponding class labels
+    def __init__(self, dataset_path, k=3, image_size=(84, 84)):
+        self.dataset_path = dataset_path
+        self.k = k
+        self.image_size = image_size
+        self.model = None
+        self.X_train = None
+        self.X_test = None
+        self.y_train = None
+        self.y_test = None
 
-for image_tensor, label in image_dataset:
-    image_features.append(image_tensor.numpy())  # Convert tensor to NumPy
-    image_labels.append(label)
+    def load_and_split_data(self):
+        """Load dataset, preprocess, and split into training/testing sets."""
+        transform_pipeline = transforms.Compose([
+            transforms.Resize(self.image_size),
+            transforms.ToTensor(),
+            transforms.Lambda(lambda img: img.view(-1))  # Flatten
+        ])
 
-# Convert to NumPy arrays for ML model use
-image_features = np.array(image_features)
-image_labels = np.array(image_labels)
+        dataset = datasets.ImageFolder(self.dataset_path, transform=transform_pipeline)
+        features = np.array([img.numpy() for img, _ in dataset])
+        labels = np.array([label for _, label in dataset])
 
-# --- 4. Split into training and testing sets (70/30) ---
-X_train, X_test, y_train, y_test = train_test_split(
-    image_features,
-    image_labels,
-    test_size=0.3,
-    random_state=42,
-    stratify=image_labels  # Preserve class distribution
-)
+        self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(
+            features, labels, test_size=0.3, random_state=42, stratify=labels
+        )
+        print(f"✅ Data Loaded: {len(self.X_train)} train, {len(self.X_test)} test")
 
-# --- 5. Initialize and train k-NN classifier (k = 3) ---
-knn_classifier = KNeighborsClassifier(n_neighbors=3)
-knn_classifier.fit(X_train, y_train)
+    def train_model(self):
+        """Train the kNN classifier."""
+        self.model = KNeighborsClassifier(n_neighbors=self.k)
+        self.model.fit(self.X_train, self.y_train)
+        print(f"✅ kNN trained with k = {self.k}")
 
-# --- 6. Predict on test set ---
-predicted_labels = knn_classifier.predict(X_test)
+    def evaluate(self):
+        """Evaluate the model's performance on the test set."""
+        predictions = self.model.predict(self.X_test)
+        accuracy = accuracy_score(self.y_test, predictions)
 
-# --- 7. Evaluate the model ---
-test_accuracy = accuracy_score(y_test, predicted_labels)
-print("Test Accuracy: {:.2f}".format(test_accuracy))
+        print(f"\n📊 Test Accuracy: {accuracy:.2f}")
+        print("\n📄 Classification Report:")
+        print(classification_report(self.y_test, predictions, target_names=["Class 0", "Class 1"]))
 
-print("\n Classification Report:\n", classification_report(y_test, predicted_labels))
-print("\n Confusion Matrix:\n", confusion_matrix(y_test, predicted_labels))
+        cm = confusion_matrix(self.y_test, predictions)
+        print("\n🔢 Confusion Matrix:\n", cm)
 
-# --- 8. Visualize Confusion Matrix ---
-plt.figure(figsize=(5, 4))
-sns.heatmap(confusion_matrix(y_test, predicted_labels), annot=True, fmt='d', cmap='Blues',
-            xticklabels=['Class 0', 'Class 1'],
-            yticklabels=['Class 0', 'Class 1'])
-plt.title("Confusion Matrix")
-plt.xlabel("Predicted Label")
-plt.ylabel("True Label")
-plt.tight_layout()
-plt.show()
+        # Heatmap visualization
+        plt.figure(figsize=(5, 4))
+        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
+                    xticklabels=["Class 0", "Class 1"],
+                    yticklabels=["Class 0", "Class 1"])
+        plt.title("Confusion Matrix")
+        plt.xlabel("Predicted Label")
+        plt.ylabel("True Label")
+        plt.tight_layout()
+        plt.show()
 
-# ==========================
-# === A7: Prediction Task ===
-# ==========================
+    def show_sample_predictions(self, sample_count=10):
+        """Display predictions vs actual labels for the first N test samples."""
+        print(f"\n🔍 First {sample_count} Predictions vs Actual Labels:")
+        for i in range(sample_count):
+            predicted_class = self.model.predict([self.X_test[i]])[0]
+            actual_class = self.y_test[i]
+            print(f"Test Sample {i}: Predicted = Class {predicted_class}, Actual = Class {actual_class}")
 
-# --- 9. Show predictions for the first 10 test samples ---
-print("\n First 10 Predictions vs Actual Labels:")
-for i in range(10):
-    predicted_class = knn_classifier.predict([X_test[i]])[0]
-    actual_class = y_test[i]
-    print(f"Test Sample {i}: Predicted = Class {predicted_class}, Actual = Class {actual_class}")
+    def predict_single_sample(self, index):
+        """Predict class for a specific test vector."""
+        test_vector = self.X_test[index]
+        predicted_class = self.model.predict([test_vector])[0]
+        print(f"\n🎯 Prediction for test sample {index} → Class {predicted_class}, Actual → Class {self.y_test[index]}")
 
-# --- 10. Predict a single sample manually (e.g., sample 50) ---
-print("\n Predicting one test vector directly:")
-manual_test_vector = X_test[50]
-manual_predicted_class = knn_classifier.predict([manual_test_vector])[0]
-print(f"Prediction for test sample 50 → Class {manual_predicted_class}, Actual → Class {y_test[50]}")
+
+# ---------- Main Execution ----------
+if __name__ == "__main__":
+    dataset_path = r"C:\Users\Divya\Desktop\Dataset"  
+
+    knn_study = KNNPredictionStudy(dataset_path, k=3)
+    knn_study.load_and_split_data()
+    knn_study.train_model()
+    knn_study.evaluate()
+    knn_study.show_sample_predictions(sample_count=10)
+    knn_study.predict_single_sample(index=50)
