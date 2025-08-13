@@ -1,74 +1,109 @@
+"""
+A9. Evaluate confusion matrix for your classification problem. 
+    - From confusion matrix, compute precision, recall, and F1-score for both training and test data.
+    - Based on observations, infer whether the model is underfit, regular fit, or overfit.
+"""
+
 import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
 from torchvision import datasets, transforms
 from sklearn.model_selection import train_test_split
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
-import matplotlib.pyplot as plt
-import seaborn as sns
 
-# --- 1. Define preprocessing pipeline (resize, tensor, flatten) ---
-image_transform = transforms.Compose([
-    transforms.Resize((84, 84)),                  # Resize to 84x84 as per MiniImageNet format
-    transforms.ToTensor(),                        # Convert PIL image to PyTorch tensor
-    transforms.Lambda(lambda img: img.view(-1))   # Flatten image into a 1D vector
-])
 
-# --- 2. Load image dataset from directory ---
-image_dataset = datasets.ImageFolder(
-    r'C:\Users\Divya\Desktop\Dataset',
-    transform=image_transform
-)
+class KNNConfusionMatrixEvaluator:
+    """Class to train k-NN and evaluate with confusion matrix and metrics."""
 
-# --- 3. Extract image vectors (features) and labels ---
-image_features = []  # To store flattened image arrays
-image_labels = []    # To store corresponding class labels
+    def __init__(self, dataset_path, image_size=(84, 84), k=3):
+        self.dataset_path = dataset_path
+        self.image_size = image_size
+        self.k = k
+        self.knn_classifier = KNeighborsClassifier(n_neighbors=k)
 
-for image_tensor, label in image_dataset:
-    image_features.append(image_tensor.numpy())  # Convert tensor to NumPy array
-    image_labels.append(label)
+    def load_and_split_data(self):
+        """Load dataset, preprocess, and split into train/test sets."""
+        transform_pipeline = transforms.Compose([
+            transforms.Resize(self.image_size),
+            transforms.ToTensor(),
+            transforms.Lambda(lambda img: img.view(-1))  # Flatten to 1D vector
+        ])
 
-# Convert to NumPy arrays for model input
-image_features = np.array(image_features)
-image_labels = np.array(image_labels)
+        dataset = datasets.ImageFolder(self.dataset_path, transform=transform_pipeline)
+        features = np.array([img.numpy() for img, _ in dataset])
+        labels = np.array([label for _, label in dataset])
 
-# --- 4. Split into training and testing sets (70% train, 30% test) ---
-X_train, X_test, y_train, y_test = train_test_split(
-    image_features,
-    image_labels,
-    test_size=0.3,
-    random_state=42,
-    stratify=image_labels  # Maintain class balance
-)
+        self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(
+            features, labels, test_size=0.3, random_state=42, stratify=labels
+        )
 
-# --- 5. Initialize and train kNN classifier (k = 3) ---
-knn_classifier = KNeighborsClassifier(n_neighbors=3)
-knn_classifier.fit(X_train, y_train)
+        print(f"✅ Data Loaded: {len(self.X_train)} train samples, {len(self.X_test)} test samples")
 
-# --- 6. Predict on both training and testing data ---
-train_predictions = knn_classifier.predict(X_train)
-test_predictions = knn_classifier.predict(X_test)
+    def train_model(self):
+        """Train k-NN classifier."""
+        self.knn_classifier.fit(self.X_train, self.y_train)
 
-# --- 7. Define evaluation function for classification metrics & confusion matrix ---
-def evaluate_classifier(true_labels, predicted_labels, dataset_type):
-    accuracy = accuracy_score(true_labels, predicted_labels)
-    conf_matrix = confusion_matrix(true_labels, predicted_labels)
-    class_report = classification_report(true_labels, predicted_labels, target_names=['Class 0', 'Class 1'])
+    def evaluate(self, X, y, dataset_name="Dataset"):
+        """Evaluate model using accuracy, classification report, and confusion matrix."""
+        predictions = self.knn_classifier.predict(X)
 
-    print(f"\n {dataset_type} Accuracy: {accuracy:.4f}")
-    print(f"{dataset_type} Classification Report:\n{class_report}")
-    print(f"{dataset_type} Confusion Matrix:\n{conf_matrix}")
+        # Accuracy
+        accuracy = accuracy_score(y, predictions)
 
-    # --- Plot confusion matrix ---
-    plt.figure(figsize=(5, 4))
-    sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Blues',
-                xticklabels=['Pred 0', 'Pred 1'],
-                yticklabels=['True 0', 'True 1'])
-    plt.title(f"{dataset_type} Confusion Matrix")
-    plt.xlabel("Predicted Label")
-    plt.ylabel("Actual Label")
-    plt.tight_layout()
-    plt.show()
+        # Classification report (Precision, Recall, F1-score)
+        class_report = classification_report(
+            y, predictions, target_names=['Class 0', 'Class 1']
+        )
 
-# --- 8. Evaluate on both Train and Test sets ---
-evaluate_classifier(y_train, train_predictions, "Train")
-evaluate_classifier(y_test, test_predictions, "Test")
+        # Confusion matrix
+        conf_matrix = confusion_matrix(y, predictions)
+
+        # Display results
+        print(f"\n📊 {dataset_name} Accuracy: {accuracy:.4f}")
+        print(f"🔍 {dataset_name} Classification Report:\n{class_report}")
+        print(f"🧮 {dataset_name} Confusion Matrix:\n{conf_matrix}")
+
+        # Plot confusion matrix
+        plt.figure(figsize=(5, 4))
+        sns.heatmap(
+            conf_matrix, annot=True, fmt='d', cmap='Blues',
+            xticklabels=['Pred 0', 'Pred 1'],
+            yticklabels=['True 0', 'True 1']
+        )
+        plt.title(f"{dataset_name} Confusion Matrix")
+        plt.xlabel("Predicted Label")
+        plt.ylabel("Actual Label")
+        plt.tight_layout()
+        plt.show()
+
+        return accuracy
+
+    def run_full_evaluation(self):
+        """Run the complete evaluation process."""
+        self.load_and_split_data()
+        self.train_model()
+
+        print("\n===== 🏋️ Training Set Evaluation =====")
+        train_acc = self.evaluate(self.X_train, self.y_train, "Training Set")
+
+        print("\n===== 🧪 Test Set Evaluation =====")
+        test_acc = self.evaluate(self.X_test, self.y_test, "Test Set")
+
+        # Model fit assessment
+        if train_acc > 0.98 and test_acc < (train_acc - 0.1):
+            fit_status = "Overfit"
+        elif abs(train_acc - test_acc) <= 0.05:
+            fit_status = "Regular Fit"
+        else:
+            fit_status = "Underfit"
+
+        print(f"\n📌 Model Fit Assessment: {fit_status}")
+
+
+# ---------- Main Execution ----------
+if __name__ == "__main__":
+    dataset_path = r"C:\Users\Divya\Desktop\Dataset"  
+    evaluator = KNNConfusionMatrixEvaluator(dataset_path, k=3)
+    evaluator.run_full_evaluation()
+
